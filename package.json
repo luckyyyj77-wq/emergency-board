@@ -1,10 +1,13 @@
 {
-  "name": "emergency-board",
+  "name": "emergency-board-light",
   "version": "1.0.0",
+  "description": "긴급 게시판 (Render 배포용, 1분 제한 포함)",
   "main": "emergency-board-light.js",
   "scripts": {
     "start": "node emergency-board-light.js"
   },
+  "author": "luckyyyj77@gmail.com",
+  "license": "MIT",
   "dependencies": {
     "express": "^4.18.2",
     "body-parser": "^1.20.2"
