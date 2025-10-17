@@ -1,4 +1,3 @@
-// emergency-board-light.js
 const express = require("express");
 const fs = require("fs");
 const bodyParser = require("body-parser");
@@ -7,41 +6,40 @@ const PORT = process.env.PORT || 3000;
 const LOGFILE = "./messages.json";
 
 let messages = [];
-let announcements = [
-  "⚠️ 오늘 밤 11시~12시 🔥 긴급 공지: 지진 발생 시 안전지대로 이동하세요"
-];
-
-// --- 파일에서 메시지 불러오기 (서버 재시작 후 유지됨) ---
 if (fs.existsSync(LOGFILE)) {
-  try {
-    messages = JSON.parse(fs.readFileSync(LOGFILE, "utf8"));
-  } catch {
-    messages = [];
-  }
+  try { messages = JSON.parse(fs.readFileSync(LOGFILE, "utf8")); }
+  catch { messages = []; }
 }
 
-// --- 본문 파서 ---
 app.use(bodyParser.json());
-app.use(express.static(__dirname)); // index.html 서빙
+app.use(express.static(__dirname));
 
-// --- API: 메시지 목록 가져오기 ---
+// ✅ 메시지 목록 (페이지네이션)
 app.get("/api/messages", (req, res) => {
-  res.json(messages.slice(-200)); // 최근 200개만 반환
+  const page = parseInt(req.query.page || "1");
+  const limit = 20;
+  const start = (page - 1) * limit;
+  const end = start + limit;
+  const data = messages.slice().reverse().slice(start, end);
+  res.json({
+    total: messages.length,
+    pages: Math.ceil(messages.length / limit),
+    page,
+    data
+  });
 });
 
-// --- API: 메시지 작성 ---
+// ✅ 메시지 전송
 app.post("/api/messages", (req, res) => {
-  const msg = req.body;
-  if (!msg.text || !msg.channel) return res.status(400).send("Invalid data");
-
+  const { time, channel, nickname, text } = req.body;
+  if (!text || !channel) return res.status(400).send("Invalid data");
+  const msg = { id: Date.now(), time, channel, nickname: nickname || "익명", text };
   messages.push(msg);
-  if (messages.length > 200) messages.shift();
-
-  fs.writeFileSync(LOGFILE, JSON.stringify(messages, null, 2)); // 영구 저장
+  if (messages.length > 10000) messages.shift();
+  fs.writeFileSync(LOGFILE, JSON.stringify(messages, null, 2));
   res.json({ success: true });
 });
 
-// --- 서버 실행 ---
 app.listen(PORT, () =>
-  console.log(`✅ Emergency board running on http://localhost:${PORT}`)
+  console.log(`✅ Emergency board v3 running: http://localhost:${PORT}`)
 );
