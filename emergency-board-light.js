@@ -141,27 +141,29 @@ document.getElementById('loadMore').addEventListener('click',()=>{
 </body></html>`);
 });
 
-// ---------------- 메시지 쓰기 (1분 제한 포함) ----------------
-app.post('/write',(req,res)=>{
-  let text=(req.body.text||'').slice(0,MAX_TEXT).trim();
-  if(!text) return res.status(400).send('내용 없음');
+// ---------------- 메시지 쓰기 ----------------
+const userLastPost = {}; // 사용자별 마지막 작성 시간 저장 (IP 기준 간단 구현)
 
-  const privateChannel = (req.body.privateChannel||'').trim().slice(0,50);
-  const channel = privateChannel || (req.body.channel||'대한민국').slice(0,50);
-
-  const userIP = req.headers['x-forwarded-for'] || req.connection.remoteAddress;
+app.post('/write', (req,res)=>{
+  const ip = req.ip; // 간단히 IP 기준
   const now = Date.now();
-  if(userLastPost[userIP] && now - userLastPost[userIP] < 60*1000){
-    return res.send('<script>alert("1분에 1번만 게시 가능합니다.");history.back();</script>');
+  if(userLastPost[ip] && now - userLastPost[ip] < 60*1000){ // 1분 제한
+    return res.send(`<script>alert('1분에 1회만 작성 가능합니다!');history.back();</script>`);
   }
-  userLastPost[userIP] = now;
 
-  const msg = {ts: new Date().toISOString(), channel, text};
+  let text=(req.body.text||'').slice(0,MAX_TEXT);
+  let privateChannel=(req.body.privateChannel||'').slice(0,50).trim();
+  let channel=privateChannel || (req.body.channel||'대한민국').slice(0,50);
+  if(!text.trim()) return res.status(400).send(`<script>alert('메시지가 없습니다');history.back();</script>`);
+
+  const msg={ts:new Date().toISOString(),channel,text};
   recent.unshift(msg);
   if(recent.length>MAX_RECENT) recent.pop();
   buildChannelIndex();
   writeQueue.push(msg);
-  res.redirect('/');
+
+  userLastPost[ip] = now; // 작성 시간 갱신
+  res.redirect('/'); // 정상 작성 시 새로고침
 });
 
 // ---------------- /more ----------------
