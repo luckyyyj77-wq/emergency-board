@@ -11,7 +11,7 @@ const PAGE_SIZE = 50;
 const BATCH_INTERVAL = 500; // 0.5초마다 배치 기록
 const ADMIN_PASS = 'admin123';
 const SCROLL_FONT_SIZE = 28;
-const POST_INTERVAL = 5 * 60 * 1000; // 5분 제한
+const POST_INTERVAL =  20 * 1000; // 5분 제한
 
 let recent = [];
 let announcements = [
@@ -252,7 +252,7 @@ app.post('/write',(req,res)=>{
   const ip=req.ip;
   const now=Date.now();
   if(userLastPost[ip] && now-userLastPost[ip]<POST_INTERVAL){
-    return res.status(429).send('5분 내에는 한 번만 게시 가능합니다.');
+    return res.status(429).send('20초 내에는 한 번만 게시 가능합니다.');
   }
 
   let text=(req.body.text||'').slice(0,MAX_TEXT);
