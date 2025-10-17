@@ -6,6 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
   <style>
+    /* ===== 기본 배경 및 폰트 ===== */
     body {
       background-color: #111;
       color: white;
@@ -15,6 +16,7 @@
       padding: 20px;
     }
 
+    /* ===== 공지 네온 효과 ===== */
     .notice {
       font-size: 20px;
       margin-bottom: 15px;
@@ -27,6 +29,7 @@
       100% { color: #ffff00; text-shadow: 0 0 5px #ffff00; }
     }
 
+    /* ===== 메시지 박스 ===== */
     #messages {
       width: 95%;
       max-width: 700px;
@@ -55,6 +58,7 @@
       background-color: #222;
     }
 
+    /* ===== 각 칸 비율 ===== */
     td.time {
       width: 15%;
       font-size: 13px;
@@ -73,6 +77,7 @@
       word-break: break-word;
     }
 
+    /* ===== 입력 UI ===== */
     input, select {
       padding: 8px;
       border-radius: 5px;
@@ -97,6 +102,7 @@
       background-color: #0080ff;
     }
 
+    /* ===== 모바일 대응 ===== */
     @media (max-width: 600px) {
       td.time { display: none; } /* 모바일에서는 시간 칸 숨김 */
       td.channel { width: 25%; }
@@ -134,7 +140,7 @@
     const channelSelect = document.getElementById("channelSelect");
     const SERVER_URL = "https://one19-board.onrender.com/api/messages";
 
-    // 대한민국 표준시(KST)로 시간 포맷
+    /* ===== 1️⃣ 대한민국 표준시(KST) ===== */
     function getKSTTime() {
       const now = new Date();
       const utc = now.getTime() + now.getTimezoneOffset() * 60000;
@@ -142,7 +148,7 @@
       return kst.toLocaleTimeString('ko-KR', { hour12: false });
     }
 
-    // 메시지 불러오기
+    /* ===== 2️⃣ 메시지 불러오기 ===== */
     async function loadMessages() {
       try {
         const res = await fetch(SERVER_URL);
@@ -154,7 +160,7 @@
       }
     }
 
-    // 메시지 추가 표시
+    /* ===== 3️⃣ 메시지 DOM 표시 ===== */
     function addMessageToDOM(time, channel, text) {
       const row = document.createElement("tr");
       row.innerHTML = `
@@ -165,8 +171,17 @@
       messageBody.appendChild(row);
     }
 
-    // 메시지 전송
+    /* ===== 4️⃣ 10초 제한 ===== */
+    let lastPostTime = 0; 
+    const POST_LIMIT_MS = 10000; // ⚙️ 수정 가능: 10초 제한 (10000ms = 10초)
+
+    /* ===== 5️⃣ 메시지 전송 ===== */
     async function sendMessage() {
+      const now = Date.now();
+      if (now - lastPostTime < POST_LIMIT_MS) {
+        alert("⚠️ 너무 빠릅니다. 10초 후 다시 시도하세요.");
+        return;
+      }
       const text = input.value.trim();
       const channel = channelSelect.value;
       if (!text) return;
@@ -181,13 +196,15 @@
         });
         addMessageToDOM(msg.time, msg.channel, msg.text);
         input.value = "";
+        lastPostTime = now; // 마지막 전송 시각 기록
       } catch {
         alert("전송 실패. 네트워크를 확인하세요.");
       }
     }
 
+    /* ===== 6️⃣ 자동 갱신 (5초마다 새로 불러오기) ===== */
     loadMessages();
-    setInterval(loadMessages, 5000); // 5초마다 갱신
+    setInterval(loadMessages, 5000);
   </script>
 </body>
 </html>
