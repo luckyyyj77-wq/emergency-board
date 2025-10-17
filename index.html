@@ -3,150 +3,229 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>대한민국 통합 게시판 v3</title>
+<title>대한민국 통합 게시판 v3.1</title>
 <style>
-body {
-  background:#111; color:white; font-family:Arial,sans-serif;
-  text-align:center; margin:0; padding:20px;
-}
-.container { max-width:900px; margin:auto; }
+body{background:#111;color:#fff;font-family:Arial, sans-serif;text-align:center;margin:0;padding:20px;}
+.container{max-width:900px;margin:auto;}
 
-/* ===== 공지 ===== */
-.notice {
-  font-size:20px; margin-bottom:15px;
-  animation:neonGlow 2s infinite alternate;
-}
-@keyframes neonGlow {
+.notice{font-size:20px;margin-bottom:15px;animation:neonGlow 2s infinite alternate;white-space:nowrap;overflow:hidden;}
+@keyframes neonGlow{
   0%{color:#00ffff;text-shadow:0 0 8px #00ffff;}
   50%{color:#ff00ff;text-shadow:0 0 8px #ff00ff;}
   100%{color:#ffff00;text-shadow:0 0 8px #ffff00;}
 }
 
-/* ===== 게시판 ===== */
-#messages {
-  border:1px solid #444; border-radius:10px;
-  background:#1a1a1a; padding:10px;
-  height:450px; overflow-y:auto; text-align:left;
-}
-table {width:100%; border-collapse:collapse;}
-th,td {padding:6px; border-bottom:1px solid #333;}
+/* 게시판 */
+#messages{border:1px solid #444;border-radius:10px;background:#1a1a1a;padding:10px;height:450px;overflow-y:auto;text-align:left;}
+table{width:100%;border-collapse:collapse;}
+th,td{padding:6px;border-bottom:1px solid #333;}
 th{background:#222;}
 td.time{width:10%;color:#aaa;font-size:13px;}
 td.channel{width:15%;color:#66ccff;text-align:center;}
 td.nickname{width:10%;color:#0ff;text-align:center;}
 td.content{width:65%;word-break:break-word;}
+
+.controls{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin:10px 0;}
+.controls input,.controls select{padding:6px;border:none;border-radius:5px;}
+.controls button{padding:6px 12px;border:none;border-radius:5px;background:#00bfff;color:#fff;cursor:pointer;}
+.controls button:hover{background:#0080ff;}
+
+.footer{margin-top:10px;font-size:12px;color:#888;}
+.pagination button{margin:3px;padding:5px 10px;border:none;border-radius:5px;background:#333;color:#fff;cursor:pointer;}
+.pagination button.active{background:#00bfff;}
+
 @media(max-width:600px){
-  td.time{display:none;}td.channel{width:20%;}
+  td.time{display:none;}
+  td.channel{width:20%;}
   td.content{width:80%;font-size:15px;}
 }
-
-input,select{
-  padding:6px;margin:4px;border:none;border-radius:5px;
-}
-button{
-  padding:6px 12px;border:none;border-radius:5px;
-  background:#00bfff;color:white;cursor:pointer;
-}
-button:hover{background:#0080ff;}
-.footer{margin-top:10px;font-size:12px;color:#888;}
-.pagination button{margin:3px;padding:5px 10px;}
 </style>
 </head>
 <body>
 <div class="container">
-  <div class="notice">🌐 대한민국(통합) 긴급 커뮤니티 채널 v3</div>
 
+  <!-- 공지 -->
+  <div class="notice" id="noticeBar">로딩 중…</div>
+
+  <!-- 필터/검색 -->
+  <div class="controls">
+    <select id="filterChannel"></select>
+    <input id="searchInput" type="text" placeholder="검색(닉/내용/채널)">
+    <button id="searchBtn">검색</button>
+    <button id="resetBtn">초기화</button>
+  </div>
+
+  <!-- 메시지 테이블 -->
   <div id="messages">
-    <table><thead><tr><th>시간</th><th>채널</th><th>닉네임</th><th>내용</th></tr></thead>
-    <tbody id="messageBody"></tbody></table>
+    <table>
+      <thead><tr><th>시간</th><th>채널</th><th>닉네임</th><th>내용</th></tr></thead>
+      <tbody id="messageBody"></tbody>
+    </table>
   </div>
 
-  <div style="margin-top:10px;">
+  <!-- 작성 폼 -->
+  <div class="controls">
     <select id="channelSelect"></select>
-    <input id="privateChannel" type="text" placeholder="사설 채널명 (선택)">
+    <input id="privateChannel" type="text" placeholder="사설 채널명(선택)">
     <input id="nickname" type="text" maxlength="4" placeholder="닉네임(4자)">
-    <input id="messageInput" type="text" placeholder="메시지를 입력하세요">
-    <button onclick="sendMessage()">전송</button>
+    <input id="messageInput" type="text" placeholder="메시지 입력">
+    <button id="sendBtn">전송</button>
   </div>
 
+  <!-- 페이지네이션 -->
   <div class="pagination" id="pagination"></div>
+
+  <!-- 관리자: 공지 편집 (간단 토글) -->
+  <div class="controls" style="margin-top:6px;">
+    <input id="adminPass" type="password" placeholder="관리자 비번">
+    <input id="noticeEdit" type="text" placeholder="공지 수정 내용">
+    <button id="noticeSaveBtn">공지 저장</button>
+  </div>
+
   <div class="footer">제작자: luckyyyj77@gmail.com</div>
 </div>
 
 <script>
+/* ===== 채널 셋업 ===== */
+const provinces=["서울","부산","대구","인천","광주","대전","울산","세종","경기","강원","충북","충남","전북","전남","경북","경남","제주"];
+function fillChannels(selectEl){
+  selectEl.innerHTML = `<option>대한민국(통합)</option>`;
+  provinces.forEach(p=>{
+    for(let i=1;i<=9;i++){
+      const opt=document.createElement("option");
+      opt.textContent=`${p}${i}`;
+      selectEl.appendChild(opt);
+    }
+  });
+}
+const channelSelect=document.getElementById("channelSelect");
+const filterChannel=document.getElementById("filterChannel");
+fillChannels(channelSelect);
+fillChannels(filterChannel);
+filterChannel.insertAdjacentHTML('afterbegin','<option value="">전체 채널</option>');
+filterChannel.value="";
+
+/* ===== 전역 상태 ===== */
 const msgBody=document.getElementById("messageBody");
 const pagination=document.getElementById("pagination");
-const channelSelect=document.getElementById("channelSelect");
+const searchInput=document.getElementById("searchInput");
+const noticeBar=document.getElementById("noticeBar");
 const privateInput=document.getElementById("privateChannel");
 const nicknameInput=document.getElementById("nickname");
-const input=document.getElementById("messageInput");
+const messageInput=document.getElementById("messageInput");
 
+let currentPage=1, totalPages=1;
+let currentQuery="", currentFilterChannel="";
 let lastPost=0;
-const POST_LIMIT=10000; // 10초 제한
-let currentPage=1,totalPages=1;
+const POST_LIMIT=10000; // 10초 제한(클라이언트)
 
-/* ===== 채널 목록 ===== */
-const provinces=["서울","부산","대구","인천","광주","대전","울산","세종","경기","강원","충북","충남","전북","전남","경북","경남","제주"];
-channelSelect.innerHTML=`<option>대한민국(통합)</option>`;
-provinces.forEach(p=>{
-  for(let i=1;i<=9;i++){
-    const opt=document.createElement("option");
-    opt.textContent=`${p}${i}`;
-    channelSelect.appendChild(opt);
-  }
-});
-
-/* ===== 시간(KST) ===== */
+/* ===== KST ===== */
 function getKST(){
   const now=new Date();
   const utc=now.getTime()+now.getTimezoneOffset()*60000;
   return new Date(utc+9*3600000).toLocaleTimeString('ko-KR',{hour12:false});
 }
 
-/* ===== 메시지 불러오기 ===== */
-async function loadMessages(page=1){
-  const res=await fetch(`/api/messages?page=${page}`);
-  const data=await res.json();
-  msgBody.innerHTML="";
-  data.data.forEach(addMessage);
-  currentPage=data.page; totalPages=data.pages;
-  renderPagination();
+/* ===== 공지 로드 & 저장 ===== */
+async function loadNotice(){
+  try{
+    const r = await fetch("/api/notice");
+    const j = await r.json();
+    noticeBar.textContent = j.text || noticeBar.textContent;
+  }catch{ /* ignore */ }
+}
+document.getElementById("noticeSaveBtn").onclick = async ()=>{
+  const pass = document.getElementById("adminPass").value.trim();
+  const text = document.getElementById("noticeEdit").value.trim();
+  if(!pass || !text){ alert("비번/내용 입력"); return; }
+  const r = await fetch("/api/notice",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({pass,text})});
+  if(r.ok){ noticeBar.textContent=text; document.getElementById("noticeEdit").value=""; }
+  else{ alert("저장 실패(권한?)"); }
 }
 
 /* ===== 메시지 출력 ===== */
-function addMessage(m){
-  const tr=document.createElement("tr");
-  tr.innerHTML=`<td class="time">${m.time}</td><td class="channel">${m.channel}</td><td class="nickname">${m.nickname||"익명"}</td><td class="content">${m.text}</td>`;
-  msgBody.appendChild(tr);
+function renderRows(rows){
+  msgBody.innerHTML="";
+  rows.forEach(m=>{
+    const tr=document.createElement("tr");
+    tr.innerHTML = `
+      <td class="time">${m.time}</td>
+      <td class="channel">${m.channel}</td>
+      <td class="nickname">${(m.nickname||"익명")}</td>
+      <td class="content">${m.text}</td>`;
+    msgBody.appendChild(tr);
+  });
 }
 
 /* ===== 페이지네이션 ===== */
 function renderPagination(){
   pagination.innerHTML="";
   for(let i=1;i<=totalPages;i++){
-    const btn=document.createElement("button");
-    btn.textContent=i;
-    if(i===currentPage) btn.style.background="#444";
-    btn.onclick=()=>loadMessages(i);
-    pagination.appendChild(btn);
+    const b=document.createElement("button");
+    b.textContent=i;
+    if(i===currentPage) b.classList.add("active");
+    b.onclick=()=>{ currentPage=i; loadMessages(); };
+    pagination.appendChild(b);
   }
 }
 
-/* ===== 메시지 전송 ===== */
-async function sendMessage(){
-  const now=Date.now();
-  if(now-lastPost<POST_LIMIT){alert("⚠️ 너무 빠릅니다. 10초 후 다시 시도하세요.");return;}
-  const text=input.value.trim(); if(!text) return;
-  const channel=privateInput.value.trim()||channelSelect.value;
-  const nickname=nicknameInput.value.trim()||"익명";
-  const msg={time:getKST(),channel,nickname,text};
-  await fetch("/api/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(msg)});
-  input.value=""; lastPost=now; loadMessages(1);
+/* ===== 메시지 로드 ===== */
+async function loadMessages(){
+  const params = new URLSearchParams();
+  params.set("page", currentPage.toString());
+  if(currentQuery) params.set("q", currentQuery);
+  if(currentFilterChannel) params.set("channel", currentFilterChannel);
+  const r = await fetch(`/api/messages?${params.toString()}`);
+  const j = await r.json();
+  renderRows(j.data);
+  currentPage = j.page; totalPages = j.pages;
+  renderPagination();
 }
 
-/* ===== 자동 로드 ===== */
+/* ===== 메시지 전송 ===== */
+document.getElementById("sendBtn").onclick = async ()=>{
+  const now=Date.now();
+  if(now-lastPost<POST_LIMIT){ alert("⚠️ 너무 빠릅니다. 10초 후 다시 시도하세요."); return; }
+  const text = messageInput.value.trim();
+  if(!text) return;
+  const channel = (privateInput.value.trim() || channelSelect.value);
+  const nickname = nicknameInput.value.trim().slice(0,4) || "익명";
+  const msg = { time:getKST(), channel, nickname, text };
+
+  const r = await fetch("/api/messages", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(msg) });
+  if(r.status===429){ alert("서버 제한: 10초 후 다시 시도하세요."); return; }
+  if(!r.ok){ alert("전송 실패"); return; }
+
+  messageInput.value="";
+  lastPost=now;
+  // 최신글 상단: 1페이지를 다시 로드
+  currentPage=1;
+  await loadMessages();
+}
+
+/* ===== 검색/필터 ===== */
+document.getElementById("searchBtn").onclick = ()=>{
+  currentQuery = searchInput.value.trim();
+  currentFilterChannel = filterChannel.value.trim();
+  currentPage=1;
+  loadMessages();
+};
+document.getElementById("resetBtn").onclick = ()=>{
+  currentQuery=""; searchInput.value="";
+  currentFilterChannel=""; filterChannel.value="";
+  currentPage=1; loadMessages();
+};
+
+/* ===== 닉네임 기억 (localStorage) ===== */
+nicknameInput.value = localStorage.getItem("nick4") || "";
+nicknameInput.addEventListener("input", ()=>{
+  localStorage.setItem("nick4", nicknameInput.value.slice(0,4));
+});
+
+/* ===== 초기 로드 + 폴링(7초) ===== */
+loadNotice();
 loadMessages();
-setInterval(()=>loadMessages(currentPage),7000);
+setInterval(()=>loadMessages(currentPage), 7000);
 </script>
 </body>
 </html>
