@@ -1,284 +1,193 @@
-// emergency-board-light.js (완전 통합·폭주 대비·AJAX 관리자 패널·5분 제한)
-const express = require('express');
-const fs = require('fs');
-const bodyParser = require('body-parser');
-const app = express();
-const LOGFILE = './messages.log';
-const PORT = process.env.PORT || 3000;
-const MAX_TEXT = 256;
-const MAX_RECENT = 200;
-const PAGE_SIZE = 50;
-const BATCH_INTERVAL = 500; // 0.5초마다 배치 기록
-const ADMIN_PASS = 'admin123';
-const SCROLL_FONT_SIZE = 28;
-const POST_INTERVAL =  20 * 1000; // 5분 제한
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>대한민국 통합 게시판</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-let recent = [];
-let announcements = [
-  "⚠️ 서버 점검 예정: 오늘 밤 11시~12시 🔥 긴급 공지: 지진 발생 시 안전지대로 이동하세요"
-];
-let writeQueue = [];
-let channelIndex = {};
-let userLastPost = {}; // IP 기준 게시 제한
+  <style>
+    body {
+      background-color: #111;
+      color: white;
+      font-family: 'Pretendard', sans-serif;
+      text-align: center;
+      margin: 0;
+      padding: 20px;
+    }
 
-// ---------------- 배치 쓰기 ----------------
-setInterval(()=>{
-  if(writeQueue.length){
-    const data = writeQueue.map(m=>JSON.stringify(m)).join('\n')+'\n';
-    fs.appendFile(LOGFILE, data, err=>{if(err) console.error(err);});
-    writeQueue=[];
-  }
-}, BATCH_INTERVAL);
+    .notice {
+      font-size: 20px;
+      margin-bottom: 15px;
+      animation: neonGlow 1.5s infinite alternate;
+    }
 
-// ---------------- 채널 인덱스 ----------------
-function buildChannelIndex(){
-  channelIndex={};
-  recent.forEach(m=>{
-    if(!channelIndex[m.channel]) channelIndex[m.channel]=[];
-    channelIndex[m.channel].push(m);
-  });
-}
+    @keyframes neonGlow {
+      0% { color: #00ffff; text-shadow: 0 0 5px #00ffff; }
+      50% { color: #ff00ff; text-shadow: 0 0 10px #ff00ff; }
+      100% { color: #ffff00; text-shadow: 0 0 5px #ffff00; }
+    }
 
-// ---------------- 최근 메시지 로드 ----------------
-function loadRecent(){
-  try{
-    const lines=fs.readFileSync(LOGFILE,'utf8').trim().split('\n');
-    const allMsgs=lines.map(l=>JSON.parse(l));
-    recent = allMsgs.slice(-MAX_RECENT).reverse();
-    buildChannelIndex();
-  }catch(e){ recent=[]; channelIndex={}; }
-}
-loadRecent();
+    #messages {
+      width: 95%;
+      max-width: 700px;
+      margin: 0 auto;
+      border: 1px solid #444;
+      border-radius: 10px;
+      background-color: #1a1a1a;
+      padding: 10px;
+      height: 350px;
+      overflow-y: auto;
+      text-align: left;
+    }
 
-// ---------------- body parser ----------------
-app.use(bodyParser.urlencoded({extended:false}));
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      color: white;
+    }
 
-// ---------------- 채널 옵션 ----------------
-const provinces = ["서울","부산","대구","인천","광주","대전","울산","세종","경기","강원","충북","충남","전북","전남","경북","경남","제주"];
-function buildChannelOptions(userChannel='') {
-  let html=`<option value="대한민국"${userChannel==='대한민국'?' selected':''}>대한민국(통합)</option>`;
-  html+=`<optgroup label="서울 1~9">`; for(let i=1;i<=9;i++) html+=`<option value="서울${i}"${userChannel==='서울'+i?' selected':''}>서울${i}</option>`; html+=`</optgroup>`;
-  provinces.forEach(p=>{
-    html+=`<optgroup label="${p} 1~9">`;
-    for(let i=1;i<=9;i++) html+=`<option value="${p}${i}"${userChannel===p+i?' selected':''}>${p}${i}</option>`;
-    html+=`</optgroup>`;
-  });
-  return html;
-}
+    th, td {
+      padding: 8px;
+      border-bottom: 1px solid #333;
+    }
 
-// ---------------- 일반 화면 ----------------
-app.get('/', (req,res)=>{
-  const channelFilter=(req.query.channel||'').toString().slice(0,50);
-  let display=recent;
-  if(channelFilter && channelIndex[channelFilter]) display=channelIndex[channelFilter].slice(0,PAGE_SIZE);
+    th {
+      background-color: #222;
+    }
 
-  res.setHeader('Content-Type','text/html; charset=utf-8');
-  res.send(`<!DOCTYPE html>
-<html><head><meta charset="utf-8"><title>비상 게시판</title>
-<style>
-body{font-family:monospace;font-size:14px;margin:5px;}
-h1{margin:2px 0;}
-table{border-collapse:collapse;width:100%;}
-td,th{border:1px solid #000;padding:2px;}
-#messages table tr:nth-child(even){background:#f0f0f0;}
-#messages table tr:nth-child(odd){background:#ffffff;}
-textarea{width:100%;height:60px;}
-input[type=submit],select,input[type=text]{margin:2px 2px 2px 0;vertical-align:middle;}
-.announcement{background:#fffae6;height:50px;overflow:hidden;white-space:nowrap;font-size:${SCROLL_FONT_SIZE}px;font-weight:bold;
-animation:scrollAnn 20s linear infinite;}
-@keyframes scrollAnn{0%{transform:translateX(100%);}100%{transform:translateX(-100%);}}
-.instructions{font-weight:bold;}
-.form-inline{display:flex;flex-wrap:wrap;align-items:center;gap:2px;}
-.form-inline select,.form-inline input[type=text]{flex:1;}
-#messages{max-height:400px;overflow:auto;}
-.footer{margin-top:10px;font-size:12px;color:#555;}
-@media(max-width:600px){textarea{height:80px;font-size:14px;}body{font-size:12px;}}
-</style>
+    td.time {
+      width: 15%;
+      font-size: 13px;
+      color: #aaa;
+    }
+
+    td.channel {
+      width: 15%;
+      font-size: 13px;
+      color: #66ccff;
+      text-align: center;
+    }
+
+    td.content {
+      width: 70%;
+      word-break: break-word;
+    }
+
+    input, select {
+      padding: 8px;
+      border-radius: 5px;
+      border: none;
+      margin: 5px;
+    }
+
+    input {
+      width: 50%;
+    }
+
+    button {
+      padding: 8px 14px;
+      border: none;
+      border-radius: 5px;
+      background-color: #00bfff;
+      color: white;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background-color: #0080ff;
+    }
+
+    @media (max-width: 600px) {
+      td.time { display: none; } /* 모바일에서는 시간 칸 숨김 */
+      td.channel { width: 25%; }
+      td.content { width: 75%; font-size: 15px; }
+      input { width: 70%; }
+    }
+  </style>
 </head>
 <body>
-<h1>📢 비상 게시판</h1>
-<p>목적: 긴급 재난/재해 상황에서 정보를 신속히 수집·배포</p>
-<div class="announcement">${announcements.join(' ⚡ ')}</div>
-<p class="instructions">게시판 사용법: 채널 선택 또는 사설 채널 입력 후 메시지 작성 → 전송 클릭 → 필요 시 필터 선택 후 '필터' 클릭</p>
+  <div class="notice">🌐 대한민국(통합) 긴급 커뮤니티 채널</div>
 
-<h3>최근 메시지 ${channelFilter? `(${channelFilter})` : ''}</h3>
-<div id="messages">
-<table>
-<tr><th>시간</th><th>채널</th><th>내용</th></tr>
-${display.map(m=>`<tr><td>${m.ts}</td><td>${m.channel}</td><td>${m.text}</td></tr>`).join('')}
-</table>
-</div>
+  <div id="messages">
+    <table id="messageTable">
+      <thead>
+        <tr><th>시간</th><th>채널</th><th>내용</th></tr>
+      </thead>
+      <tbody id="messageBody"></tbody>
+    </table>
+  </div>
 
-<hr>
-<form id="postForm" action="/write" method="post" class="form-inline">
-<select name="channel">${buildChannelOptions()}</select>
-<input type="text" name="privateChannel" placeholder="사설 채널 입력">
-<textarea name="text" placeholder="메시지 입력" style="flex:2;"></textarea>
-<input type="submit" value="전송">
-</form>
+  <div style="margin-top:15px;">
+    <select id="channelSelect">
+      <option>일반</option>
+      <option>긴급</option>
+      <option>정보</option>
+      <option>공지</option>
+    </select>
+    <input id="messageInput" type="text" placeholder="메시지를 입력하세요">
+    <button onclick="sendMessage()">전송</button>
+  </div>
 
-<form id="filterForm" method="get" class="form-inline">
-<select name="channel">
-<option value="">전체보기</option>
-${buildChannelOptions(channelFilter)}
-</select>
-<input type="submit" value="필터">
-<button type="button" id="loadMore">더보기</button>
-</form>
+  <script>
+    const messageBody = document.getElementById("messageBody");
+    const input = document.getElementById("messageInput");
+    const channelSelect = document.getElementById("channelSelect");
+    const SERVER_URL = "https://one19-board.onrender.com/api/messages";
 
-<div class="footer">제작자: luckyyyj77@gmail.com | <a href="/admin">관리자 모드</a></div>
+    // 대한민국 표준시(KST)로 시간 포맷
+    function getKSTTime() {
+      const now = new Date();
+      const utc = now.getTime() + now.getTimezoneOffset() * 60000;
+      const kst = new Date(utc + 9 * 60 * 60000);
+      return kst.toLocaleTimeString('ko-KR', { hour12: false });
+    }
 
-<script>
-let offset=${PAGE_SIZE};
-const channelFilter='${channelFilter}';
-document.getElementById('loadMore').addEventListener('click',()=>{
-  fetch('/more?offset='+offset+'&channel='+channelFilter)
-    .then(r=>r.json())
-    .then(data=>{
-      const table=document.querySelector('#messages table');
-      data.forEach(m=>{
-        const tr=document.createElement('tr');
-        tr.innerHTML='<td>'+m.ts+'</td><td>'+m.channel+'</td><td>'+m.text+'</td>';
-        table.appendChild(tr);
-      });
-      offset+=data.length;
-    });
-});
+    // 메시지 불러오기
+    async function loadMessages() {
+      try {
+        const res = await fetch(SERVER_URL);
+        const data = await res.json();
+        messageBody.innerHTML = "";
+        data.forEach(m => addMessageToDOM(m.time, m.channel, m.text));
+      } catch {
+        console.log("메시지 불러오기 실패");
+      }
+    }
 
-document.getElementById('postForm').addEventListener('submit', async function(e){
-  e.preventDefault();
-  const formData = new FormData(this);
-  const res = await fetch('/write',{method:'POST',body:formData});
-  if(res.status===429){
-    alert(await res.text()); // 5분 제한 팝업
-    return;
-  }
-  this.submit();
-});
-</script>
-</body></html>`);
-});
+    // 메시지 추가 표시
+    function addMessageToDOM(time, channel, text) {
+      const row = document.createElement("tr");
+      row.innerHTML = `
+        <td class="time">${time}</td>
+        <td class="channel">${channel}</td>
+        <td class="content">${text}</td>
+      `;
+      messageBody.appendChild(row);
+    }
 
-// ---------------- 관리자 모드 ----------------
-app.get('/admin', (req,res)=>{
-  res.setHeader('Content-Type','text/html; charset=utf-8');
-  res.send(`<!DOCTYPE html>
-<html><head><meta charset="utf-8"><title>관리자 모드</title></head><body>
-<h1>관리자 모드</h1>
-<form method="post" action="/admin/login">
-<input type="password" name="pass" placeholder="관리자 비밀번호">
-<input type="submit" value="접속">
-</form>
-<p><a href="/">일반 화면으로 돌아가기</a></p>
-</body></html>`);
-});
+    // 메시지 전송
+    async function sendMessage() {
+      const text = input.value.trim();
+      const channel = channelSelect.value;
+      if (!text) return;
 
-app.post('/admin/login',(req,res)=>{
-  if(req.body.pass===ADMIN_PASS) res.redirect('/admin/panel');
-  else res.send('비밀번호 틀림 <a href="/admin">뒤로</a>');
-});
+      const msg = { time: getKSTTime(), channel, text };
 
-// ---------------- 관리자 패널 AJAX ----------------
-app.get('/admin/panel',(req,res)=>{
-  const display=recent.slice(0,MAX_RECENT);
-  res.setHeader('Content-Type','text/html; charset=utf-8');
-  res.send(`<!DOCTYPE html>
-<html><head><meta charset="utf-8"><title>관리자 패널</title>
-<style>
-table{border-collapse:collapse;width:100%;}
-td,th{border:1px solid #000;padding:2px;}
-button{margin:1px;}
-</style>
-</head><body>
-<h1>관리자 패널 (AJAX)</h1>
+      try {
+        await fetch(SERVER_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(msg)
+        });
+        addMessageToDOM(msg.time, msg.channel, msg.text);
+        input.value = "";
+      } catch {
+        alert("전송 실패. 네트워크를 확인하세요.");
+      }
+    }
 
-<h2>공지 관리</h2>
-<textarea id="announcementText" placeholder="공지 내용" style="width:80%;"></textarea>
-<button onclick="addAnnouncement()">공지 추가</button>
-<ul id="announcementList">
-${announcements.map((a,i)=>`<li data-id="${i}">${a} <button onclick="deleteAnnouncement(${i})">삭제</button></li>`).join('')}
-</ul>
-
-<h2>메시지 관리</h2>
-<table id="msgTable">
-<tr><th>시간</th><th>채널</th><th>내용</th><th>삭제</th></tr>
-${display.map((m,i)=>`<tr data-id="${i}"><td>${m.ts}</td><td>${m.channel}</td><td>${m.text}</td><td><button onclick="deleteMsg(${i})">삭제</button></td></tr>`).join('')}
-</table>
-
-<p><a href="/">일반 화면으로 돌아가기</a></p>
-
-<script>
-function addAnnouncement(){
-  const text=document.getElementById('announcementText').value.trim().slice(0,200);
-  if(!text) return alert('내용 없음');
-  fetch('/admin/announcement',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'text='+encodeURIComponent(text)})
-    .then(()=>{
-      const ul=document.getElementById('announcementList');
-      const li=document.createElement('li');
-      li.textContent=text;
-      ul.appendChild(li);
-    });
-}
-function deleteAnnouncement(i){
-  fetch('/admin/announcement/delete',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'index='+i})
-    .then(()=>document.querySelector('#announcementList li[data-id="'+i+'"]').remove());
-}
-function deleteMsg(i){
-  fetch('/admin/msg/delete',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'index='+i})
-    .then(()=>document.querySelector('#msgTable tr[data-id="'+i+'"]').remove());
-}
-</script>
-</body></html>`);
-});
-
-// ---------------- 관리자 POST ----------------
-app.post('/admin/announcement',(req,res)=>{
-  const text=(req.body.text||'').slice(0,200);
-  if(text) announcements.push(text);
-  res.end();
-});
-app.post('/admin/announcement/delete',(req,res)=>{
-  const i=parseInt(req.body.index); if(!isNaN(i)) announcements.splice(i,1);
-  res.end();
-});
-app.post('/admin/msg/delete',(req,res)=>{
-  const i=parseInt(req.body.index); if(!isNaN(i)) recent.splice(i,1);
-  buildChannelIndex();
-  res.end();
-});
-
-// ---------------- 메시지 쓰기 ----------------
-app.post('/write',(req,res)=>{
-  const ip=req.ip;
-  const now=Date.now();
-  if(userLastPost[ip] && now-userLastPost[ip]<POST_INTERVAL){
-    return res.status(429).send('20초 내에는 한 번만 게시 가능합니다.');
-  }
-
-  let text=(req.body.text||'').slice(0,MAX_TEXT);
-  let privateChannel=(req.body.privateChannel||'').slice(0,50).trim();
-  let channel=privateChannel || (req.body.channel||'대한민국').slice(0,50);
-  if(!text.trim()) return res.status(400).send('empty');
-
-  const msg={ ts:new Date().toISOString(), channel, text };
-  recent.unshift(msg);
-  if(recent.length>MAX_RECENT) recent.pop();
-  buildChannelIndex();
-  writeQueue.push(msg);
-
-  userLastPost[ip]=now;
-  res.redirect('/');
-});
-
-// ---------------- 더보기 ----------------
-app.get('/more',(req,res)=>{
-  let offset=parseInt(req.query.offset)||0;
-  const channelFilter=(req.query.channel||'').toString().slice(0,50);
-  let display=recent;
-  if(channelFilter && channelIndex[channelFilter]) display=channelIndex[channelFilter].slice(offset,offset+PAGE_SIZE);
-  else display=recent.slice(offset,offset+PAGE_SIZE);
-  res.json(display);
-});
-
-// ---------------- 서버 시작 ----------------
-app.listen(PORT,()=>console.log(`Emergency board running on port ${PORT}`));
+    loadMessages();
+    setInterval(loadMessages, 5000); // 5초마다 갱신
+  </script>
+</body>
+</html>
