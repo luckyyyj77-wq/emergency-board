@@ -1,0 +1,11 @@
+{
+  "name": "emergency-board-light",
+  "version": "1.0.0",
+  "main": "emergency-board-light.js",
+  "scripts": {
+    "start": "node emergency-board-light.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2"
+  }
+}
